@@ -147,40 +147,22 @@ if st.button("🚀 Generate Report", disabled=(not plan_file or not daily_file))
             # Get captured output
             console_output = output_capture.getvalue()
             
-            # Display warnings and errors directly (not in dropdown)
+            # Display ALL console output without filtering
             if console_output.strip():
+                st.markdown("### 📋 Processing Log")
                 
-                # Parse output for different message types
+                # Split into lines and display each one
                 lines = console_output.split('\n')
                 
-                warnings = []
-                errors = []
-                
                 for line in lines:
-                    if line.strip():
-                        # Check for errors
-                        if 'ERROR' in line or '❌' in line:
-                            errors.append(line)
-                        # Check for warnings (but exclude success messages)
-                        elif ('WARNING' in line or '⚠️' in line or 'CAUTION' in line or 
-                              'ignoring' in line.lower() or 'please fix' in line.lower() or
-                              'should be' in line.lower() or 'empty' in line.lower() or
-                              'blank' in line.lower() or 'missing' in line.lower()):
-                            warnings.append(line)
+                    line = line.strip()
+                    if not line:
+                        continue
+                    
+                    # Display every line as an info message to preserve all details
+                    st.info(line)
                 
-                # Display errors directly
-                if errors:
-                    st.markdown("### ❌ Errors Found")
-                    for error in errors:
-                        st.error(error)
-                    st.markdown("---")
-                
-                # Display warnings directly (not in expander)
-                if warnings:
-                    st.markdown("### ⚠️ Warnings")
-                    for warning in warnings:
-                        st.warning(warning)
-                    st.markdown("---")
+                st.markdown("---")
             
             # Check if output file was created
             if os.path.exists(output_path):
