@@ -147,20 +147,20 @@ if st.button("🚀 Generate Report", disabled=(not plan_file or not daily_file))
             # Get captured output
             console_output = output_capture.getvalue()
             
-            # Display ALL console output without filtering
+            # Display console output grouped by message blocks
             if console_output.strip():
                 st.markdown("### 📋 Processing Log")
                 
-                # Split into lines and display each one
-                lines = console_output.split('\n')
+                # Split by double newlines to group related messages
+                message_blocks = console_output.split('\n\n')
                 
-                for line in lines:
-                    line = line.strip()
-                    if not line:
+                for block in message_blocks:
+                    block = block.strip()
+                    if not block:
                         continue
                     
-                    # Display every line as an info message to preserve all details
-                    st.info(line)
+                    # Display each block as a single info box
+                    st.info(block)
                 
                 st.markdown("---")
             
