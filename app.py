@@ -105,6 +105,10 @@ if st.button("🚀 Generate Report", disabled=(not plan_file or not daily_file))
     daily_path = os.path.join(temp_dir, "daily.xlsx")
     output_path = os.path.join(temp_dir, "production_report.xlsx")
     
+    # Delete old output file if it exists to prevent downloading stale reports
+    if os.path.exists(output_path):
+        os.remove(output_path)
+    
     try:
         # Save uploaded files
         with st.spinner("📤 Uploading files..."):
