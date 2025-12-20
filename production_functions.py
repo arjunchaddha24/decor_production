@@ -2,7 +2,6 @@ import pandas as pd
 import re
 from datetime import datetime
 from dateutil import parser
-
 def get_style_numbers_from_plan(file_path):
     """
     Reads the plan, and returns a list of all style numbers in that plan. Also checks that the 'Style #' in the first column of each sheet
@@ -93,7 +92,6 @@ def get_style_numbers_from_plan(file_path):
             print(f"  -> Error: Could not process sheet '{sheet_name}'. Reason: {e}")
 
     return valid_sheets
-
 def get_row_wise_data_from_plan(file_path, style_number):
     """
     Extracts all row data for a given style number from an Excel file.
@@ -424,7 +422,6 @@ def get_row_wise_data_from_plan(file_path, style_number):
     
     return result_list
 
-
 def get_row_wise_data_from_daily_prod(file_path):
     """
     Extracts all row data from a daily production Excel file.
@@ -662,7 +659,6 @@ def get_row_wise_data_from_daily_prod(file_path):
     
     return result_list
 
-
 def convert_cumulative_to_daywise_quantities_for_daily_prod(daily_prod_data):
     """
     Converts cumulative quantities in daily production data to day-wise quantities.
@@ -711,7 +707,7 @@ def convert_cumulative_to_daywise_quantities_for_daily_prod(daily_prod_data):
     # Sort by date (earliest first).
     dated_rows.sort(key=lambda x: x[0])
     
-    print(f"   Processing {len(dated_rows)} rows in chronological order...")
+    # Removed: Processing count message
     
     # --- Step 2: Build a dictionary to track the most recent quantities for each combo ---
     # Structure: {(style, po, colour): {'date': date_obj, 'quantities': {...}}}
@@ -756,15 +752,15 @@ def convert_cumulative_to_daywise_quantities_for_daily_prod(daily_prod_data):
             # Check if any quantity decreased (which would be unusual).
             if (daywise_cutting < 0 or daywise_sewing < 0 or daywise_finishing < 0 or 
                 daywise_washing < 0 or daywise_packing < 0):
-                print(f"\n   ⚠️  WARNING: Negative day-wise quantity detected!")
-                print(f"   Style: {style}, PO: {po}, Colour: {colour}")
-                print(f"   Current date: {date_str}, Previous date: {previous_date.strftime('%d/%b/%y')}")
-                print(f"   This suggests the cumulative quantity decreased, which is unusual.")
-                print(f"   Current cumulative: C={cumulative_cutting}, S={cumulative_sewing}, F={cumulative_finishing}, W={cumulative_washing}, P={cumulative_packing}")
-                print(f"   Previous cumulative: C={previous_quantities['cutting']}, S={previous_quantities['sewing']}, F={previous_quantities['finishing']}, W={previous_quantities['washing']}, P={previous_quantities['packing']}")
-                print(f"   Day-wise (calculated): C={daywise_cutting}, S={daywise_sewing}, F={daywise_finishing}, W={daywise_washing}, P={daywise_packing}")
-                print(f"   Using 0 for negative values.")
-                
+                # Print as single formatted warning message
+                warning_msg = (
+                    f"\n   ⚠️  WARNING: Negative day-wise quantity detected!\n"
+                    f"Style: {style}, PO: {po}, Colour: {colour}\n"
+                    f"Current date: {date_str}, Previous date: {previous_date.strftime('%d/%b/%y')}\n"
+                    f"Using 0 for negative values."
+                )
+                print(f"\n{warning_msg}\n")
+
                 # Set negative values to 0 (can't have negative production).
                 daywise_cutting = max(0, daywise_cutting)
                 daywise_sewing = max(0, daywise_sewing)
@@ -809,7 +805,6 @@ def convert_cumulative_to_daywise_quantities_for_daily_prod(daily_prod_data):
             }
         }
     return result_list
-
 
 def match_plan_with_actual(plan_data, daily_prod_data, style_number):
     """
@@ -1053,7 +1048,6 @@ def match_plan_with_actual(plan_data, daily_prod_data, style_number):
 
     return matched_rows
 
-
 def delete_empty_rows(matched_data):
     """
     Removes rows from matched data where ALL planned and actual quantities are zero.
@@ -1114,7 +1108,6 @@ def delete_empty_rows(matched_data):
             filtered_rows.append(row)
     
     return filtered_rows
-
 
 def add_cumulative_columns_to_matched_dict(matched_data):
     """
@@ -1369,7 +1362,6 @@ def add_cumulative_columns_to_matched_dict(matched_data):
     
     return result_rows
 
-
 from datetime import datetime
 import pandas as pd
 
@@ -1526,7 +1518,6 @@ def write_production_report_to_excel(matched_data_by_style, output_file_path):
         print(f"\n❌ ERROR: Could not save Excel file. Error: {e}")
         return
 
-
 def do_everything(plan_file_path, daily_prod_file_path, output_file_path):
     """
     Master function that orchestrates the entire production report generation workflow.
@@ -1609,8 +1600,5 @@ def do_everything(plan_file_path, daily_prod_file_path, output_file_path):
     # Done!
     print(f"\n✅ Generated Successfully: {output_file_path}")
 
-
 do_everything("new_plan.xlsx", "daily_prod_report_2.xlsx", "collated_production.xlsx")
-
-
 
