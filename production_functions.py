@@ -1120,8 +1120,8 @@ def add_cumulative_columns_to_matched_dict(matched_data):
     - Cumulative Actual (for each process)
     - Cumulative Actual - Cumulative Planned (for each process)
     
-    IMPORTANT: Cumulative quantities are calculated at the STYLE level (not per PO/Colour).
-    All rows with the same date get the same cumulative value.
+    IMPORTANT: Cumulative quantities are calculated at the STYLE/PO/COLOUR level.
+    Each unique combination of Style No, PO, and Colour has its own cumulative tracking.
     
     Args:
         matched_data: List of dictionaries from delete_empty_rows()
@@ -1131,18 +1131,17 @@ def add_cumulative_columns_to_matched_dict(matched_data):
     
     Returns:
         A new list of dictionaries with all the original columns plus the new cumulative columns.
-        The rows are sorted by date.
+        The rows are sorted by Style No, PO, Colour, and then by date.
     """
     
     # If the input is empty, return empty list.
     if not matched_data:
         return []
     
-    # --- Step 1: Sort all rows by date ---
-    # We need to sort by date so that cumulative calculations are in chronological order.
+    # --- Step 1: Parse dates and group rows by Style/PO/Colour ---
+    # Create a dictionary: {(Style No, PO, Colour): [(row, date_obj), ...]}
     
-    # Create a list of tuples: (row, date_object) for sorting.
-    rows_with_dates = []
+    grouped_rows = {}
     
     for row in matched_data:
         date_str = row['Date']
@@ -1150,217 +1149,232 @@ def add_cumulative_columns_to_matched_dict(matched_data):
         try:
             # Parse the date string (format: DD/Mon/YY, e.g., '15/Sep/25').
             date_obj = datetime.strptime(date_str, '%d/%b/%y')
-            rows_with_dates.append((row, date_obj))
+            
+            # Create a key for this group: (Style No, PO, Colour)
+            group_key = (row.get('Style No', ''), row.get('PO', ''), row.get('Colour', ''))
+            
+            # Add this row to the appropriate group.
+            if group_key not in grouped_rows:
+                grouped_rows[group_key] = []
+            
+            grouped_rows[group_key].append((row, date_obj))
+            
         except Exception as e:
             # If we can't parse the date, print a warning and skip this row.
             print(f"WARNING: Could not parse date '{date_str}'. Skipping this row.")
             continue
     
-    # Sort by date (chronologically).
-    rows_with_dates.sort(key=lambda x: x[1])
-    
-    # --- Step 2: Initialize cumulative tracking variables ---
-    # We track cumulative quantities for each process.
-    # These are dictionaries: {date_object: cumulative_value}
-    # This allows us to handle multiple rows with the same date.
-    
-    cumulative_planned_cutting = 0
-    cumulative_planned_sewing = 0
-    cumulative_planned_washing = 0
-    cumulative_planned_finishing = 0
-    cumulative_planned_packing = 0
-    
-    cumulative_actual_cutting = 0
-    cumulative_actual_sewing = 0
-    cumulative_actual_washing = 0
-    cumulative_actual_finishing = 0
-    cumulative_actual_packing = 0
-    
-    # Track the current date we're processing.
-    # When the date changes, we update the cumulative values.
-    current_date = None
-    
-    # Track the cumulative values for the current date.
-    # All rows with the same date will get these values.
-    current_date_cumulative_planned_cutting = 0
-    current_date_cumulative_planned_sewing = 0
-    current_date_cumulative_planned_washing = 0
-    current_date_cumulative_planned_finishing = 0
-    current_date_cumulative_planned_packing = 0
-    
-    current_date_cumulative_actual_cutting = 0
-    current_date_cumulative_actual_sewing = 0
-    current_date_cumulative_actual_washing = 0
-    current_date_cumulative_actual_finishing = 0
-    current_date_cumulative_actual_packing = 0
-    
-    # Track the total quantities for the current date.
-    # We accumulate these as we process rows with the same date.
-    current_date_total_planned_cutting = 0
-    current_date_total_planned_sewing = 0
-    current_date_total_planned_washing = 0
-    current_date_total_planned_finishing = 0
-    current_date_total_planned_packing = 0
-    
-    current_date_total_actual_cutting = 0
-    current_date_total_actual_sewing = 0
-    current_date_total_actual_washing = 0
-    current_date_total_actual_finishing = 0
-    current_date_total_actual_packing = 0
-    
-    # --- Step 3: Process each row and calculate cumulative values ---
+    # --- Step 2: Process each group separately ---
     result_rows = []
     
-    for row, date_obj in rows_with_dates:
+    for group_key, rows_with_dates in grouped_rows.items():
         
-        # --- Step 3.1: Check if we've moved to a new date ---
-        if current_date is None or date_obj != current_date:
-            # We've moved to a new date.
+        # Sort this group's rows by date (chronologically).
+        rows_with_dates.sort(key=lambda x: x[1])
+        
+        # --- Step 2.1: Initialize cumulative tracking variables for this group ---
+        cumulative_planned_cutting = 0
+        cumulative_planned_sewing = 0
+        cumulative_planned_washing = 0
+        cumulative_planned_finishing = 0
+        cumulative_planned_packing = 0
+        
+        cumulative_actual_cutting = 0
+        cumulative_actual_sewing = 0
+        cumulative_actual_washing = 0
+        cumulative_actual_finishing = 0
+        cumulative_actual_packing = 0
+        
+        # Track the current date we're processing.
+        current_date = None
+        
+        # Track the cumulative values for the current date.
+        # All rows with the same date will get these values.
+        current_date_cumulative_planned_cutting = 0
+        current_date_cumulative_planned_sewing = 0
+        current_date_cumulative_planned_washing = 0
+        current_date_cumulative_planned_finishing = 0
+        current_date_cumulative_planned_packing = 0
+        
+        current_date_cumulative_actual_cutting = 0
+        current_date_cumulative_actual_sewing = 0
+        current_date_cumulative_actual_washing = 0
+        current_date_cumulative_actual_finishing = 0
+        current_date_cumulative_actual_packing = 0
+        
+        # Track the total quantities for the current date.
+        current_date_total_planned_cutting = 0
+        current_date_total_planned_sewing = 0
+        current_date_total_planned_washing = 0
+        current_date_total_planned_finishing = 0
+        current_date_total_planned_packing = 0
+        
+        current_date_total_actual_cutting = 0
+        current_date_total_actual_sewing = 0
+        current_date_total_actual_washing = 0
+        current_date_total_actual_finishing = 0
+        current_date_total_actual_packing = 0
+        
+        # --- Step 2.2: Process each row in this group ---
+        for row, date_obj in rows_with_dates:
             
-            # If this is not the first date, update the cumulative values.
-            if current_date is not None:
-                # Add the totals from the previous date to the cumulative values.
-                cumulative_planned_cutting += current_date_total_planned_cutting
-                cumulative_planned_sewing += current_date_total_planned_sewing
-                cumulative_planned_washing += current_date_total_planned_washing
-                cumulative_planned_finishing += current_date_total_planned_finishing
-                cumulative_planned_packing += current_date_total_planned_packing
+            # --- Step 2.2.1: Check if we've moved to a new date ---
+            if current_date is None or date_obj != current_date:
+                # We've moved to a new date.
                 
-                cumulative_actual_cutting += current_date_total_actual_cutting
-                cumulative_actual_sewing += current_date_total_actual_sewing
-                cumulative_actual_washing += current_date_total_actual_washing
-                cumulative_actual_finishing += current_date_total_actual_finishing
-                cumulative_actual_packing += current_date_total_actual_packing
-            
-            # Reset the current date totals.
-            current_date_total_planned_cutting = 0
-            current_date_total_planned_sewing = 0
-            current_date_total_planned_washing = 0
-            current_date_total_planned_finishing = 0
-            current_date_total_planned_packing = 0
-            
-            current_date_total_actual_cutting = 0
-            current_date_total_actual_sewing = 0
-            current_date_total_actual_washing = 0
-            current_date_total_actual_finishing = 0
-            current_date_total_actual_packing = 0
-            
-            # Update the current date.
-            current_date = date_obj
-            
-            # First pass: Calculate the total quantities for this date.
-            # We need to look ahead and sum all rows with the same date.
-            for future_row, future_date_obj in rows_with_dates:
-                if future_date_obj == current_date:
-                    current_date_total_planned_cutting += future_row.get('Planned Cutting', 0)
-                    current_date_total_planned_sewing += future_row.get('Planned Sewing', 0)
-                    current_date_total_planned_washing += future_row.get('Planned Washing', 0)
-                    current_date_total_planned_finishing += future_row.get('Planned Finishing', 0)
-                    current_date_total_planned_packing += future_row.get('Planned Packing', 0)
+                # If this is not the first date, update the cumulative values.
+                if current_date is not None:
+                    # Add the totals from the previous date to the cumulative values.
+                    cumulative_planned_cutting += current_date_total_planned_cutting
+                    cumulative_planned_sewing += current_date_total_planned_sewing
+                    cumulative_planned_washing += current_date_total_planned_washing
+                    cumulative_planned_finishing += current_date_total_planned_finishing
+                    cumulative_planned_packing += current_date_total_planned_packing
                     
-                    current_date_total_actual_cutting += future_row.get('Actual Cutting', 0)
-                    current_date_total_actual_sewing += future_row.get('Actual Sewing', 0)
-                    current_date_total_actual_washing += future_row.get('Actual Washing', 0)
-                    current_date_total_actual_finishing += future_row.get('Actual Finishing', 0)
-                    current_date_total_actual_packing += future_row.get('Actual Packing', 0)
+                    cumulative_actual_cutting += current_date_total_actual_cutting
+                    cumulative_actual_sewing += current_date_total_actual_sewing
+                    cumulative_actual_washing += current_date_total_actual_washing
+                    cumulative_actual_finishing += current_date_total_actual_finishing
+                    cumulative_actual_packing += current_date_total_actual_packing
+                
+                # Reset the current date totals.
+                current_date_total_planned_cutting = 0
+                current_date_total_planned_sewing = 0
+                current_date_total_planned_washing = 0
+                current_date_total_planned_finishing = 0
+                current_date_total_planned_packing = 0
+                
+                current_date_total_actual_cutting = 0
+                current_date_total_actual_sewing = 0
+                current_date_total_actual_washing = 0
+                current_date_total_actual_finishing = 0
+                current_date_total_actual_packing = 0
+                
+                # Update the current date.
+                current_date = date_obj
+                
+                # First pass: Calculate the total quantities for this date.
+                # We need to look ahead and sum all rows with the same date.
+                for future_row, future_date_obj in rows_with_dates:
+                    if future_date_obj == current_date:
+                        current_date_total_planned_cutting += future_row.get('Planned Cutting', 0)
+                        current_date_total_planned_sewing += future_row.get('Planned Sewing', 0)
+                        current_date_total_planned_washing += future_row.get('Planned Washing', 0)
+                        current_date_total_planned_finishing += future_row.get('Planned Finishing', 0)
+                        current_date_total_planned_packing += future_row.get('Planned Packing', 0)
+                        
+                        current_date_total_actual_cutting += future_row.get('Actual Cutting', 0)
+                        current_date_total_actual_sewing += future_row.get('Actual Sewing', 0)
+                        current_date_total_actual_washing += future_row.get('Actual Washing', 0)
+                        current_date_total_actual_finishing += future_row.get('Actual Finishing', 0)
+                        current_date_total_actual_packing += future_row.get('Actual Packing', 0)
+                
+                # Calculate the cumulative values for this date.
+                # This includes the previous cumulative + the total for this date.
+                current_date_cumulative_planned_cutting = cumulative_planned_cutting + current_date_total_planned_cutting
+                current_date_cumulative_planned_sewing = cumulative_planned_sewing + current_date_total_planned_sewing
+                current_date_cumulative_planned_washing = cumulative_planned_washing + current_date_total_planned_washing
+                current_date_cumulative_planned_finishing = cumulative_planned_finishing + current_date_total_planned_finishing
+                current_date_cumulative_planned_packing = cumulative_planned_packing + current_date_total_planned_packing
+                
+                current_date_cumulative_actual_cutting = cumulative_actual_cutting + current_date_total_actual_cutting
+                current_date_cumulative_actual_sewing = cumulative_actual_sewing + current_date_total_actual_sewing
+                current_date_cumulative_actual_washing = cumulative_actual_washing + current_date_total_actual_washing
+                current_date_cumulative_actual_finishing = cumulative_actual_finishing + current_date_total_actual_finishing
+                current_date_cumulative_actual_packing = cumulative_actual_packing + current_date_total_actual_packing
             
-            # Calculate the cumulative values for this date.
-            # This includes the previous cumulative + the total for this date.
-            current_date_cumulative_planned_cutting = cumulative_planned_cutting + current_date_total_planned_cutting
-            current_date_cumulative_planned_sewing = cumulative_planned_sewing + current_date_total_planned_sewing
-            current_date_cumulative_planned_washing = cumulative_planned_washing + current_date_total_planned_washing
-            current_date_cumulative_planned_finishing = cumulative_planned_finishing + current_date_total_planned_finishing
-            current_date_cumulative_planned_packing = cumulative_planned_packing + current_date_total_planned_packing
+            # --- Step 2.2.2: Extract the planned and actual quantities for this row ---
+            planned_cutting = row.get('Planned Cutting', 0)
+            planned_sewing = row.get('Planned Sewing', 0)
+            planned_washing = row.get('Planned Washing', 0)
+            planned_finishing = row.get('Planned Finishing', 0)
+            planned_packing = row.get('Planned Packing', 0)
             
-            current_date_cumulative_actual_cutting = cumulative_actual_cutting + current_date_total_actual_cutting
-            current_date_cumulative_actual_sewing = cumulative_actual_sewing + current_date_total_actual_sewing
-            current_date_cumulative_actual_washing = cumulative_actual_washing + current_date_total_actual_washing
-            current_date_cumulative_actual_finishing = cumulative_actual_finishing + current_date_total_actual_finishing
-            current_date_cumulative_actual_packing = cumulative_actual_packing + current_date_total_actual_packing
-        
-        # --- Step 3.2: Extract the planned and actual quantities for this row ---
-        planned_cutting = row.get('Planned Cutting', 0)
-        planned_sewing = row.get('Planned Sewing', 0)
-        planned_washing = row.get('Planned Washing', 0)
-        planned_finishing = row.get('Planned Finishing', 0)
-        planned_packing = row.get('Planned Packing', 0)
-        
-        actual_cutting = row.get('Actual Cutting', 0)
-        actual_sewing = row.get('Actual Sewing', 0)
-        actual_washing = row.get('Actual Washing', 0)
-        actual_finishing = row.get('Actual Finishing', 0)
-        actual_packing = row.get('Actual Packing', 0)
-        
-        # --- Step 3.3: Calculate the day of the week ---
-        day_of_week = date_obj.strftime('%A')  # e.g., 'Monday', 'Tuesday', etc.
-        
-        # --- Step 3.4: Calculate day-wise differences (Actual - Planned) ---
-        day_diff_cutting = actual_cutting - planned_cutting
-        day_diff_sewing = actual_sewing - planned_sewing
-        day_diff_washing = actual_washing - planned_washing
-        day_diff_finishing = actual_finishing - planned_finishing
-        day_diff_packing = actual_packing - planned_packing
-        
-        # --- Step 3.5: Calculate cumulative differences (Cumulative Actual - Cumulative Planned) ---
-        cumulative_diff_cutting = current_date_cumulative_actual_cutting - current_date_cumulative_planned_cutting
-        cumulative_diff_sewing = current_date_cumulative_actual_sewing - current_date_cumulative_planned_sewing
-        cumulative_diff_washing = current_date_cumulative_actual_washing - current_date_cumulative_planned_washing
-        cumulative_diff_finishing = current_date_cumulative_actual_finishing - current_date_cumulative_planned_finishing
-        cumulative_diff_packing = current_date_cumulative_actual_packing - current_date_cumulative_planned_packing
-        
-        # --- Step 3.6: Create the new row with all columns ---
-        # We create a new dictionary with all the original columns plus the new ones.
-        new_row = {
-            'Style No': row.get('Style No', ''),
-            'PO': row.get('PO', ''),
-            'Colour': row.get('Colour', ''),
-            'Date': row.get('Date', ''),
-            'Day': day_of_week,
+            actual_cutting = row.get('Actual Cutting', 0)
+            actual_sewing = row.get('Actual Sewing', 0)
+            actual_washing = row.get('Actual Washing', 0)
+            actual_finishing = row.get('Actual Finishing', 0)
+            actual_packing = row.get('Actual Packing', 0)
             
-            # Cutting
-            'Planned Cutting': planned_cutting,
-            'Actual Cutting': actual_cutting,
-            'Day Actual - Day Planned Cutting': day_diff_cutting,
-            'Cumulative Planned Cutting': current_date_cumulative_planned_cutting,
-            'Cumulative Actual Cutting': current_date_cumulative_actual_cutting,
-            'Cumulative Actual - Cumulative Planned Cutting': cumulative_diff_cutting,
+            # --- Step 2.2.3: Calculate the day of the week ---
+            day_of_week = date_obj.strftime('%A')  # e.g., 'Monday', 'Tuesday', etc.
             
-            # Sewing
-            'Planned Sewing': planned_sewing,
-            'Actual Sewing': actual_sewing,
-            'Day Actual - Day Planned Sewing': day_diff_sewing,
-            'Cumulative Planned Sewing': current_date_cumulative_planned_sewing,
-            'Cumulative Actual Sewing': current_date_cumulative_actual_sewing,
-            'Cumulative Actual - Cumulative Planned Sewing': cumulative_diff_sewing,
+            # --- Step 2.2.4: Calculate day-wise differences (Actual - Planned) ---
+            day_diff_cutting = actual_cutting - planned_cutting
+            day_diff_sewing = actual_sewing - planned_sewing
+            day_diff_washing = actual_washing - planned_washing
+            day_diff_finishing = actual_finishing - planned_finishing
+            day_diff_packing = actual_packing - planned_packing
             
-            # Washing
-            'Planned Washing': planned_washing,
-            'Actual Washing': actual_washing,
-            'Day Actual - Day Planned Washing': day_diff_washing,
-            'Cumulative Planned Washing': current_date_cumulative_planned_washing,
-            'Cumulative Actual Washing': current_date_cumulative_actual_washing,
-            'Cumulative Actual - Cumulative Planned Washing': cumulative_diff_washing,
+            # --- Step 2.2.5: Calculate cumulative differences (Cumulative Actual - Cumulative Planned) ---
+            cumulative_diff_cutting = current_date_cumulative_actual_cutting - current_date_cumulative_planned_cutting
+            cumulative_diff_sewing = current_date_cumulative_actual_sewing - current_date_cumulative_planned_sewing
+            cumulative_diff_washing = current_date_cumulative_actual_washing - current_date_cumulative_planned_washing
+            cumulative_diff_finishing = current_date_cumulative_actual_finishing - current_date_cumulative_planned_finishing
+            cumulative_diff_packing = current_date_cumulative_actual_packing - current_date_cumulative_planned_packing
             
-            # Finishing
-            'Planned Finishing': planned_finishing,
-            'Actual Finishing': actual_finishing,
-            'Day Actual - Day Planned Finishing': day_diff_finishing,
-            'Cumulative Planned Finishing': current_date_cumulative_planned_finishing,
-            'Cumulative Actual Finishing': current_date_cumulative_actual_finishing,
-            'Cumulative Actual - Cumulative Planned Finishing': cumulative_diff_finishing,
+            # --- Step 2.2.6: Create the new row with all columns ---
+            new_row = {
+                'Style No': row.get('Style No', ''),
+                'PO': row.get('PO', ''),
+                'Colour': row.get('Colour', ''),
+                'Date': row.get('Date', ''),
+                'Day': day_of_week,
+                
+                # Cutting
+                'Planned Cutting': planned_cutting,
+                'Actual Cutting': actual_cutting,
+                'Day Actual - Day Planned Cutting': day_diff_cutting,
+                'Cumulative Planned Cutting': current_date_cumulative_planned_cutting,
+                'Cumulative Actual Cutting': current_date_cumulative_actual_cutting,
+                'Cumulative Actual - Cumulative Planned Cutting': cumulative_diff_cutting,
+                
+                # Sewing
+                'Planned Sewing': planned_sewing,
+                'Actual Sewing': actual_sewing,
+                'Day Actual - Day Planned Sewing': day_diff_sewing,
+                'Cumulative Planned Sewing': current_date_cumulative_planned_sewing,
+                'Cumulative Actual Sewing': current_date_cumulative_actual_sewing,
+                'Cumulative Actual - Cumulative Planned Sewing': cumulative_diff_sewing,
+                
+                # Washing
+                'Planned Washing': planned_washing,
+                'Actual Washing': actual_washing,
+                'Day Actual - Day Planned Washing': day_diff_washing,
+                'Cumulative Planned Washing': current_date_cumulative_planned_washing,
+                'Cumulative Actual Washing': current_date_cumulative_actual_washing,
+                'Cumulative Actual - Cumulative Planned Washing': cumulative_diff_washing,
+                
+                # Finishing
+                'Planned Finishing': planned_finishing,
+                'Actual Finishing': actual_finishing,
+                'Day Actual - Day Planned Finishing': day_diff_finishing,
+                'Cumulative Planned Finishing': current_date_cumulative_planned_finishing,
+                'Cumulative Actual Finishing': current_date_cumulative_actual_finishing,
+                'Cumulative Actual - Cumulative Planned Finishing': cumulative_diff_finishing,
+                
+                # Packing
+                'Planned Packing': planned_packing,
+                'Actual Packing': actual_packing,
+                'Day Actual - Day Planned Packing': day_diff_packing,
+                'Cumulative Planned Packing': current_date_cumulative_planned_packing,
+                'Cumulative Actual Packing': current_date_cumulative_actual_packing,
+                'Cumulative Actual - Cumulative Planned Packing': cumulative_diff_packing
+            }
             
-            # Packing
-            'Planned Packing': planned_packing,
-            'Actual Packing': actual_packing,
-            'Day Actual - Day Planned Packing': day_diff_packing,
-            'Cumulative Planned Packing': current_date_cumulative_planned_packing,
-            'Cumulative Actual Packing': current_date_cumulative_actual_packing,
-            'Cumulative Actual - Cumulative Planned Packing': cumulative_diff_packing
-        }
-        
-        result_rows.append(new_row)
+            result_rows.append(new_row)
+    
+    # --- Step 3: Sort the final result by Style No, PO, Colour, and Date ---
+    # This ensures the output is organized and easy to read.
+    result_rows.sort(key=lambda x: (
+        x['Style No'],
+        x['PO'],
+        x['Colour'],
+        datetime.strptime(x['Date'], '%d/%b/%y')
+    ))
     
     return result_rows
+
 
 from datetime import datetime
 import pandas as pd
@@ -1601,4 +1615,3 @@ def do_everything(plan_file_path, daily_prod_file_path, output_file_path):
     print(f"\n✅ Generated Successfully: {output_file_path}")
 
 do_everything("new_plan.xlsx", "daily_prod_report_2.xlsx", "collated_production.xlsx")
-
