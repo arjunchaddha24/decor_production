@@ -477,17 +477,18 @@ def get_row_wise_data_from_daily_prod(file_path):
             # Column J: Finishing Quantity
             # Column K: Washing Quantity
             # Column L: Packing Quantity
-            df = pd.read_excel(xls, sheet_name=sheet_name, usecols="A,E,F,H,I,J,K,L")
+            df = pd.read_excel(xls, sheet_name=sheet_name, usecols="A,E,F,G,H,I,J,K,L")  # ← CHANGED: Added G for Order Quantity
             
             # Check if we got the expected number of columns.
-            if len(df.columns) < 8:
+            if len(df.columns) < 9:  # ← CHANGED: Was 8, now 9 because we added Order Quantity
                 print(f"   ERROR: Did not find the expected columns in sheet '{sheet_name}'. Skipping this sheet.")
                 skipped_sheets.append(sheet_name)
                 continue
             
             # Rename columns for consistency.
-            # The order should be: A, E, F, H, I, J, K, L
-            df.columns = ['PO#', 'Style Number', 'Colour', 'Cutting Quantity', 'Sewing Quantity', 
+            # The order should be: A, E, F, G, H, I, J, K, L
+            df.columns = ['PO#', 'Style Number', 'Colour', 'Order Quantity',  # ← CHANGED: Added 'Order Quantity'
+                         'Cutting Quantity', 'Sewing Quantity', 
                          'Finishing Quantity', 'Washing Quantity', 'Packing Quantity']
             
         except Exception as e:
@@ -616,6 +617,7 @@ def get_row_wise_data_from_daily_prod(file_path):
                         return 0
             
             # Process each quantity column.
+            order_quantity = process_quantity(row['Order Quantity'], 'G', 'Order Quantity')  # ← ADDED
             actual_cutting = process_quantity(row['Cutting Quantity'], 'H', 'Actual Cutting')
             actual_sewing = process_quantity(row['Sewing Quantity'], 'I', 'Actual Sewing')
             actual_finishing = process_quantity(row['Finishing Quantity'], 'J', 'Actual Finishing')
@@ -629,6 +631,7 @@ def get_row_wise_data_from_daily_prod(file_path):
                 'PO': po_str,
                 'Colour': colour_normalized,
                 'Date': sheet_date_parsed.strftime('%d/%b/%y'),
+                'Order Quantity': order_quantity,  # ← ADDED
                 'Actual Cutting': actual_cutting,
                 'Actual Sewing': actual_sewing,
                 'Actual Finishing': actual_finishing,
@@ -1457,6 +1460,7 @@ def write_production_report_to_excel(matched_data_by_style, output_file_path):
             'Style No',
             'PO',
             'Colour',
+            'Order Quantity',  # ← ADDED
             'Date',
             'Day',
             
@@ -1567,6 +1571,20 @@ def do_everything(plan_file_path, daily_prod_file_path, output_file_path):
         print("ERROR: No data extracted from daily production file.")
         return
     
+    # ========== ADDED BLOCK START: Build Order Quantity lookup from raw DPR data ==========
+    # We build this lookup BEFORE converting to day-wise, because Order Quantity is a fixed
+    # value per (Style, PO, Colour) combination and doesn't change across dates.
+    order_quantity_lookup = {}
+    for row in daily_prod_data:
+        style_upper = row['Style No'].strip().upper()
+        po = row['PO'].strip()
+        colour_lower = row['Colour'].strip().lower()
+        combo_key = (style_upper, po, colour_lower)
+        # Only store the first occurrence (Order Quantity is the same for all dates)
+        if combo_key not in order_quantity_lookup:
+            order_quantity_lookup[combo_key] = row.get('Order Quantity', 0)
+    # ========== ADDED BLOCK END ==========
+
     # Step 3: Convert cumulative quantities to day-wise quantities.
     daily_prod_daywise = convert_cumulative_to_daywise_quantities_for_daily_prod(daily_prod_data)
     
@@ -1600,6 +1618,15 @@ def do_everything(plan_file_path, daily_prod_file_path, output_file_path):
         if not matched_rows:
             continue
         
+        # ========== ADDED BLOCK START: Stamp Order Quantity onto each matched row ==========
+        for row in matched_rows:
+            style_upper = row['Style No'].strip().upper()
+            po = row['PO'].strip()
+            colour_lower = row['Colour'].strip().lower()
+            combo_key = (style_upper, po, colour_lower)
+            row['Order Quantity'] = order_quantity_lookup.get(combo_key, 0)
+        # ========== ADDED BLOCK END ==========
+
         # Store the matched data.
         matched_data_by_style[style_number] = matched_rows
     
