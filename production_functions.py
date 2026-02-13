@@ -2,6 +2,12 @@ import pandas as pd
 import re
 from datetime import datetime
 from dateutil import parser
+
+
+# ============================================================================
+# FUNCTION 1: get_style_numbers_from_plan
+# ============================================================================
+
 def get_style_numbers_from_plan(file_path):
     """
     Reads the plan, and returns a list of all style numbers in that plan. Also checks that the 'Style #' in the first column of each sheet
@@ -92,6 +98,12 @@ def get_style_numbers_from_plan(file_path):
             print(f"  -> Error: Could not process sheet '{sheet_name}'. Reason: {e}")
 
     return valid_sheets
+
+
+# ============================================================================
+# FUNCTION 2: get_row_wise_data_from_plan
+# ============================================================================
+
 def get_row_wise_data_from_plan(file_path, style_number):
     """
     Extracts all row data for a given style number from an Excel file.
@@ -316,7 +328,6 @@ def get_row_wise_data_from_plan(file_path, style_number):
                         # Year increased. Check if it's a legitimate New Year transition.
                         # If the new date is in early January (first 2 weeks), it's probably okay.
                         if date_parsed.month == 1 and date_parsed.day <= 14:
-                            # This looks like a natural New Year transition. No warning needed.
                             pass
                         else:
                             # Year increased but not in early January. This is suspicious.
@@ -422,18 +433,23 @@ def get_row_wise_data_from_plan(file_path, style_number):
     
     return result_list
 
+
+# ============================================================================
+# FUNCTION 3: get_row_wise_data_from_daily_prod
+# ============================================================================
+
 def get_row_wise_data_from_daily_prod(file_path):
     """
     Extracts all row data from a daily production Excel file.
     The file has multiple sheets, each named with a date.
-    Returns a list of dictionaries with Style No, PO, Colour, Date, and actual quantities.
+    Returns a list of dictionaries with Style No, PO, Colour, Date, Order Quantity, and actual quantities.
     
     Args:
         file_path: The full path to the daily production Excel file.
     
     Returns:
         A list of dictionaries, where each dictionary represents one row with keys:
-        'Style No', 'PO', 'Colour', 'Date', 'Actual Cutting', 'Actual Sewing',
+        'Style No', 'PO', 'Colour', 'Date', 'Order Quantity', 'Actual Cutting', 'Actual Sewing',
         'Actual Finishing', 'Actual Washing', 'Actual Packing', 'Source Sheet', 'Source Row'
     """
     
@@ -471,24 +487,25 @@ def get_row_wise_data_from_daily_prod(file_path):
         
         # --- Step 3.2: Read the sheet data ---
         try:
-            # Read columns A (PO#), E (Style Number), F (Colour), and H, I, J, K, L (quantities).
+            # Read columns A (PO#), E (Style Number), F (Colour), G (Order Quantity),
+            # and H, I, J, K, L (quantities).
+            # Column G: Order Quantity
             # Column H: Cutting Quantity
             # Column I: Sewing Quantity
             # Column J: Finishing Quantity
             # Column K: Washing Quantity
             # Column L: Packing Quantity
-            df = pd.read_excel(xls, sheet_name=sheet_name, usecols="A,E,F,G,H,I,J,K,L")  # ← CHANGED: Added G for Order Quantity
+            df = pd.read_excel(xls, sheet_name=sheet_name, usecols="A,E,F,G,H,I,J,K,L")
             
             # Check if we got the expected number of columns.
-            if len(df.columns) < 9:  # ← CHANGED: Was 8, now 9 because we added Order Quantity
+            if len(df.columns) < 9:
                 print(f"   ERROR: Did not find the expected columns in sheet '{sheet_name}'. Skipping this sheet.")
                 skipped_sheets.append(sheet_name)
                 continue
             
             # Rename columns for consistency.
             # The order should be: A, E, F, G, H, I, J, K, L
-            df.columns = ['PO#', 'Style Number', 'Colour', 'Order Quantity',  # ← CHANGED: Added 'Order Quantity'
-                         'Cutting Quantity', 'Sewing Quantity', 
+            df.columns = ['PO#', 'Style Number', 'Colour', 'Order Quantity', 'Cutting Quantity', 'Sewing Quantity',
                          'Finishing Quantity', 'Washing Quantity', 'Packing Quantity']
             
         except Exception as e:
@@ -617,21 +634,25 @@ def get_row_wise_data_from_daily_prod(file_path):
                         return 0
             
             # Process each quantity column.
-            order_quantity = process_quantity(row['Order Quantity'], 'G', 'Order Quantity')  # ← ADDED
             actual_cutting = process_quantity(row['Cutting Quantity'], 'H', 'Actual Cutting')
             actual_sewing = process_quantity(row['Sewing Quantity'], 'I', 'Actual Sewing')
             actual_finishing = process_quantity(row['Finishing Quantity'], 'J', 'Actual Finishing')
             actual_washing = process_quantity(row['Washing Quantity'], 'K', 'Actual Washing')
             actual_packing = process_quantity(row['Packing Quantity'], 'L', 'Actual Packing')
             
-            # --- Step 3.4.6: Create the dictionary for this row ---
+            # --- Step 3.4.6: Process Order Quantity ---
+            # Order Quantity is the same for every date for a given (Style, PO, Colour) combo.
+            # We read it here so it can be used later to build a lookup dictionary.
+            order_qty = process_quantity(row['Order Quantity'], 'G', 'Order Quantity')
+            
+            # --- Step 3.4.7: Create the dictionary for this row ---
             # The date comes from the sheet name, which we already parsed.
             row_dict = {
                 'Style No': style_str,
                 'PO': po_str,
                 'Colour': colour_normalized,
                 'Date': sheet_date_parsed.strftime('%d/%b/%y'),
-                'Order Quantity': order_quantity,  # ← ADDED
+                'Order Quantity': order_qty,
                 'Actual Cutting': actual_cutting,
                 'Actual Sewing': actual_sewing,
                 'Actual Finishing': actual_finishing,
@@ -662,6 +683,11 @@ def get_row_wise_data_from_daily_prod(file_path):
     
     return result_list
 
+
+# ============================================================================
+# FUNCTION 4: convert_cumulative_to_daywise_quantities_for_daily_prod
+# ============================================================================
+
 def convert_cumulative_to_daywise_quantities_for_daily_prod(daily_prod_data):
     """
     Converts cumulative quantities in daily production data to day-wise quantities.
@@ -686,8 +712,6 @@ def convert_cumulative_to_daywise_quantities_for_daily_prod(daily_prod_data):
         instead of cumulative quantities.
     """
     
-    from datetime import datetime
-    
     # --- Step 1: Sort the data by date (chronologically) ---
     # We need to process rows in chronological order to properly calculate day-wise quantities.    
     # Create a list of tuples: (date_object, row)
@@ -710,7 +734,7 @@ def convert_cumulative_to_daywise_quantities_for_daily_prod(daily_prod_data):
     # Sort by date (earliest first).
     dated_rows.sort(key=lambda x: x[0])
     
-    # Removed: Processing count message
+    print(f"   Processing {len(dated_rows)} rows in chronological order...")
     
     # --- Step 2: Build a dictionary to track the most recent quantities for each combo ---
     # Structure: {(style, po, colour): {'date': date_obj, 'quantities': {...}}}
@@ -755,15 +779,11 @@ def convert_cumulative_to_daywise_quantities_for_daily_prod(daily_prod_data):
             # Check if any quantity decreased (which would be unusual).
             if (daywise_cutting < 0 or daywise_sewing < 0 or daywise_finishing < 0 or 
                 daywise_washing < 0 or daywise_packing < 0):
-                # Print as single formatted warning message
-                warning_msg = (
-                    f"\n   ⚠️  WARNING: Negative day-wise quantity detected!\n"
-                    f"Style: {style}, PO: {po}, Colour: {colour}\n"
-                    f"Current date: {date_str}, Previous date: {previous_date.strftime('%d/%b/%y')}\n"
-                    f"Using 0 for negative values."
-                )
-                print(f"\n{warning_msg}\n")
-
+                print(f"\n   ⚠️  WARNING: Negative day-wise quantity detected!")
+                print(f"   Style: {style}, PO: {po}, Colour: {colour}")
+                print(f"   Current date: {date_str}, Previous date: {previous_date.strftime('%d/%b/%y')}")
+                print(f"   Using 0 for negative values.")
+                
                 # Set negative values to 0 (can't have negative production).
                 daywise_cutting = max(0, daywise_cutting)
                 daywise_sewing = max(0, daywise_sewing)
@@ -808,6 +828,11 @@ def convert_cumulative_to_daywise_quantities_for_daily_prod(daily_prod_data):
             }
         }
     return result_list
+
+
+# ============================================================================
+# FUNCTION 5: match_plan_with_actual
+# ============================================================================
 
 def match_plan_with_actual(plan_data, daily_prod_data, style_number):
     """
@@ -983,7 +1008,6 @@ def match_plan_with_actual(plan_data, daily_prod_data, style_number):
         # Sort the dates chronologically.
         # The dates are in format 'DD/Mon/YY' (e.g., '15/Sep/25').
         # We need to convert them to datetime objects for sorting.
-        from datetime import datetime
         
         # Convert date strings to datetime objects for sorting.
         date_objects = []
@@ -1051,6 +1075,11 @@ def match_plan_with_actual(plan_data, daily_prod_data, style_number):
 
     return matched_rows
 
+
+# ============================================================================
+# FUNCTION 6: delete_empty_rows
+# ============================================================================
+
 def delete_empty_rows(matched_data):
     """
     Removes rows from matched data where ALL planned and actual quantities are zero.
@@ -1111,6 +1140,11 @@ def delete_empty_rows(matched_data):
             filtered_rows.append(row)
     
     return filtered_rows
+
+
+# ============================================================================
+# FUNCTION 7: add_cumulative_columns_to_matched_dict
+# ============================================================================
 
 def add_cumulative_columns_to_matched_dict(matched_data):
     """
@@ -1379,15 +1413,16 @@ def add_cumulative_columns_to_matched_dict(matched_data):
     return result_rows
 
 
-from datetime import datetime
-import pandas as pd
+# ============================================================================
+# FUNCTION 8: write_production_report_to_excel
+# ============================================================================
 
 def write_production_report_to_excel(matched_data_by_style, output_file_path):
     """
     Writes the matched production data to an Excel file with one sheet per style.
     
-    Each sheet contains all 35 columns including:
-    - Style No, PO, Colour, Date, Day
+    Each sheet contains all 36 columns including:
+    - Style No, PO, Colour, Order Quantity, Date, Day
     - Planned quantities, Actual quantities, Day differences, Cumulative quantities, Cumulative differences
     - For each process: Cutting, Sewing, Washing, Finishing, Packing
     
@@ -1460,7 +1495,7 @@ def write_production_report_to_excel(matched_data_by_style, output_file_path):
             'Style No',
             'PO',
             'Colour',
-            'Order Quantity',  # ← ADDED
+            'Order Quantity',
             'Date',
             'Day',
             
@@ -1536,6 +1571,11 @@ def write_production_report_to_excel(matched_data_by_style, output_file_path):
         print(f"\n❌ ERROR: Could not save Excel file. Error: {e}")
         return
 
+
+# ============================================================================
+# FUNCTION 9: do_everything (Master orchestrator)
+# ============================================================================
+
 def do_everything(plan_file_path, daily_prod_file_path, output_file_path):
     """
     Master function that orchestrates the entire production report generation workflow.
@@ -1544,9 +1584,11 @@ def do_everything(plan_file_path, daily_prod_file_path, output_file_path):
     1. Extracts style numbers from the plan file
     2. Extracts row-wise data from the plan for each style
     3. Extracts row-wise data from the daily production file
-    4. Converts cumulative quantities to day-wise quantities
-    5. Matches plan data with actual production data for each style
-    6. Writes the final production report to an Excel file
+    4. Builds an Order Quantity lookup from the daily production data
+    5. Converts cumulative quantities to day-wise quantities
+    6. Matches plan data with actual production data for each style
+    7. Adds Order Quantity to each matched row
+    8. Writes the final production report to an Excel file
     
     Args:
         plan_file_path: Full path to the plan Excel file.
@@ -1571,20 +1613,22 @@ def do_everything(plan_file_path, daily_prod_file_path, output_file_path):
         print("ERROR: No data extracted from daily production file.")
         return
     
-    # ========== ADDED BLOCK START: Build Order Quantity lookup from raw DPR data ==========
-    # We build this lookup BEFORE converting to day-wise, because Order Quantity is a fixed
-    # value per (Style, PO, Colour) combination and doesn't change across dates.
+    # ==================== ADDED BLOCK START ====================
+    # Step 2.5: Build Order Quantity lookup from daily production data.
+    # The Order Quantity is the same for every date for a given (Style, PO, Colour) combo,
+    # so we just pick it up from the first occurrence we find.
+    # Key: (style_upper, po, colour_lower) -> Order Quantity (int)
     order_quantity_lookup = {}
     for row in daily_prod_data:
-        style_upper = row['Style No'].strip().upper()
+        style = row['Style No'].strip().upper()
         po = row['PO'].strip()
-        colour_lower = row['Colour'].strip().lower()
-        combo_key = (style_upper, po, colour_lower)
-        # Only store the first occurrence (Order Quantity is the same for all dates)
-        if combo_key not in order_quantity_lookup:
-            order_quantity_lookup[combo_key] = row.get('Order Quantity', 0)
-    # ========== ADDED BLOCK END ==========
-
+        colour = row['Colour'].strip().lower()
+        lookup_key = (style, po, colour)
+        # Only store the first occurrence (since it's the same for all dates).
+        if lookup_key not in order_quantity_lookup:
+            order_quantity_lookup[lookup_key] = row.get('Order Quantity', 0)
+    # ==================== ADDED BLOCK END ======================
+    
     # Step 3: Convert cumulative quantities to day-wise quantities.
     daily_prod_daywise = convert_cumulative_to_daywise_quantities_for_daily_prod(daily_prod_data)
     
@@ -1607,26 +1651,23 @@ def do_everything(plan_file_path, daily_prod_file_path, output_file_path):
         
         if not matched_rows:
             continue
-
         matched_rows = delete_empty_rows(matched_rows)
-
         if not matched_rows:
             continue
-
         matched_rows = add_cumulative_columns_to_matched_dict(matched_rows)
-
         if not matched_rows:
             continue
         
-        # ========== ADDED BLOCK START: Stamp Order Quantity onto each matched row ==========
+        # ==================== ADDED BLOCK START ====================
+        # Step 4.5: Add Order Quantity to each matched row using the lookup.
         for row in matched_rows:
-            style_upper = row['Style No'].strip().upper()
-            po = row['PO'].strip()
-            colour_lower = row['Colour'].strip().lower()
-            combo_key = (style_upper, po, colour_lower)
-            row['Order Quantity'] = order_quantity_lookup.get(combo_key, 0)
-        # ========== ADDED BLOCK END ==========
-
+            style = row.get('Style No', '').strip().upper()
+            po = row.get('PO', '').strip()
+            colour = row.get('Colour', '').strip().lower()
+            lookup_key = (style, po, colour)
+            row['Order Quantity'] = order_quantity_lookup.get(lookup_key, 0)
+        # ==================== ADDED BLOCK END ======================
+        
         # Store the matched data.
         matched_data_by_style[style_number] = matched_rows
     
@@ -1640,5 +1681,3 @@ def do_everything(plan_file_path, daily_prod_file_path, output_file_path):
     
     # Done!
     print(f"\n✅ Generated Successfully: {output_file_path}")
-
-do_everything("new_plan.xlsx", "daily_prod_report_2.xlsx", "collated_production.xlsx")
