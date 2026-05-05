@@ -575,7 +575,7 @@ def get_row_wise_data_from_daily_prod(file_path):
                 else:
                     # If neither "PID-" nor "PID" is found, use the full value.
                     # But print a warning.
-                    print(f"   WARNING: Style number in sheet '{sheet_name}', row {excel_row_number} does not contain 'PID-' or 'PID'. Value: '{style_full}'. Using as-is.")
+                    #print(f"   WARNING: Style number in sheet '{sheet_name}', row {excel_row_number} does not contain 'PID-' or 'PID'. Value: '{style_full}'. Using as-is.")
                     style_str = style_full
             
             # --- Step 3.4.4: Process Colour ---
